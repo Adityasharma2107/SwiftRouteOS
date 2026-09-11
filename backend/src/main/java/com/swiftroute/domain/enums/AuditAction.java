@@ -1,0 +1,14 @@
+package com.swiftroute.domain.enums;
+
+public enum AuditAction {
+    CREATED,
+    DISPATCHED,
+    MANUAL_OVERRIDE,
+    STATUS_CHANGED,
+    INVENTORY_RESERVED,
+    INVENTORY_RELEASED,
+    INVENTORY_CONSUMED,
+    ESCALATED,
+    ASSIGNMENT_CANCELLED,
+    COMPLETED
+}
