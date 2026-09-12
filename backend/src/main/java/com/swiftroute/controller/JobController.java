@@ -4,12 +4,16 @@ import com.swiftroute.common.ApiResponse;
 import com.swiftroute.domain.enums.JobStatus;
 import com.swiftroute.domain.enums.Priority;
 import com.swiftroute.domain.enums.SlaStatus;
+import com.swiftroute.dto.request.JobTransitionRequest;
 import com.swiftroute.dto.response.JobResponse;
+import com.swiftroute.service.JobService;
 import com.swiftroute.service.ServiceRequestService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -21,9 +25,11 @@ import java.util.List;
 public class JobController {
 
     private final ServiceRequestService serviceRequestService;
+    private final JobService jobService;
 
-    public JobController(ServiceRequestService serviceRequestService) {
+    public JobController(ServiceRequestService serviceRequestService, JobService jobService) {
         this.serviceRequestService = serviceRequestService;
+        this.jobService = jobService;
     }
 
     @GetMapping("/{id}")
@@ -42,5 +48,18 @@ public class JobController {
 
         List<JobResponse> response = serviceRequestService.getAllJobs(status, priority, slaStatus);
         return ResponseEntity.ok(ApiResponse.ok(response));
+    }
+
+    @PatchMapping("/{id}/transition")
+    @Operation(summary = "Transition Job Status",
+               description = "Applies state machine transition (EN_ROUTE, IN_PROGRESS, COMPLETED, CANCELLED) with operational side effects")
+    public ResponseEntity<ApiResponse<JobResponse>> transitionJob(
+            @PathVariable Long id,
+            @Valid @RequestBody JobTransitionRequest request,
+            Authentication authentication) {
+
+        String username = authentication != null ? authentication.getName() : "system";
+        JobResponse response = jobService.transitionJob(id, request, username);
+        return ResponseEntity.ok(ApiResponse.ok("Job status transitioned successfully", response));
     }
 }
