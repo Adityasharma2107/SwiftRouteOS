@@ -35,4 +35,8 @@ public interface JobRepository extends JpaRepository<Job, Long> {
     List<Job> findActiveJobsForSlaMonitoring();
 
     List<Job> findBySlaStatus(SlaStatus slaStatus);
+
+    long countBySlaStatus(SlaStatus slaStatus);
+
+    long countByStatusNotIn(Collection<JobStatus> statuses);
 }
