@@ -2,14 +2,20 @@ package com.swiftroute.service;
 
 import com.swiftroute.common.GeoUtils;
 import com.swiftroute.domain.entity.*;
+import com.swiftroute.domain.enums.AssignmentStatus;
+import com.swiftroute.domain.enums.AuditAction;
+import com.swiftroute.domain.enums.JobStatus;
 import com.swiftroute.domain.enums.TechnicianStatus;
-import com.swiftroute.domain.repository.AssignmentRepository;
-import com.swiftroute.domain.repository.JobRepository;
-import com.swiftroute.domain.repository.TechnicianRepository;
+import com.swiftroute.domain.repository.*;
+import com.swiftroute.dto.request.DispatchConfirmationRequest;
+import com.swiftroute.dto.response.DispatchConfirmationResponse;
 import com.swiftroute.dto.response.DispatchRecommendationResponse;
 import com.swiftroute.dto.response.ScoreBreakdownResponse;
 import com.swiftroute.dto.response.TechnicianCandidateResponse;
+import com.swiftroute.exception.BusinessRuleException;
+import com.swiftroute.exception.InvalidStateTransitionException;
 import com.swiftroute.exception.ResourceNotFoundException;
+import com.swiftroute.exception.TechnicianConflictException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,13 +37,22 @@ public class DispatchService {
     private final JobRepository jobRepository;
     private final TechnicianRepository technicianRepository;
     private final AssignmentRepository assignmentRepository;
+    private final AuditEventRepository auditEventRepository;
+    private final UserRepository userRepository;
+    private final ServiceRequestRepository serviceRequestRepository;
 
     public DispatchService(JobRepository jobRepository,
                            TechnicianRepository technicianRepository,
-                           AssignmentRepository assignmentRepository) {
+                           AssignmentRepository assignmentRepository,
+                           AuditEventRepository auditEventRepository,
+                           UserRepository userRepository,
+                           ServiceRequestRepository serviceRequestRepository) {
         this.jobRepository = jobRepository;
         this.technicianRepository = technicianRepository;
         this.assignmentRepository = assignmentRepository;
+        this.auditEventRepository = auditEventRepository;
+        this.userRepository = userRepository;
+        this.serviceRequestRepository = serviceRequestRepository;
     }
 
     @Transactional(readOnly = true)
@@ -176,5 +191,153 @@ public class DispatchService {
         }
 
         return baseScore;
+    }
+
+    @Transactional
+    public DispatchConfirmationResponse confirmDispatch(DispatchConfirmationRequest request, String actorUsername) {
+        if (!request.getScheduledEndTime().isAfter(request.getScheduledStartTime())) {
+            throw new BusinessRuleException("Scheduled end time must be after scheduled start time");
+        }
+
+        // 1. Lock job pessimistically to prevent concurrent assignments
+        Job job = jobRepository.findByIdWithPessimisticLock(request.getJobId())
+                .orElseThrow(() -> new ResourceNotFoundException("Job", "id", request.getJobId()));
+
+        // 2. Validate state machine invariant: job must be PENDING
+        if (job.getStatus() != JobStatus.PENDING) {
+            throw new InvalidStateTransitionException("Job", job.getStatus().name(), JobStatus.ASSIGNED.name());
+        }
+
+        // 3. Validate technician eligibility
+        Technician technician = technicianRepository.findById(request.getSelectedTechnicianId())
+                .orElseThrow(() -> new ResourceNotFoundException("Technician", "id", request.getSelectedTechnicianId()));
+
+        if (technician.getStatus() == TechnicianStatus.OFF_DUTY) {
+            throw new BusinessRuleException("Technician " + technician.getName() + " is OFF_DUTY and cannot receive assignments");
+        }
+
+        Skill requiredSkill = job.getServiceRequest().getRequiredSkill();
+        boolean hasSkill = false;
+        if (technician.getTechnicianSkills() != null) {
+            for (TechnicianSkill ts : technician.getTechnicianSkills()) {
+                if (ts.getSkill().getId().equals(requiredSkill.getId())) {
+                    hasSkill = true;
+                    break;
+                }
+            }
+        }
+        if (!hasSkill) {
+            throw new BusinessRuleException("Technician " + technician.getName() + " lacks required skill: " + requiredSkill.getName() + " (" + requiredSkill.getCode() + ")");
+        }
+
+        // 4. Overlap invariant: Check if technician has overlapping active assignments
+        List<Assignment> overlaps = assignmentRepository.findOverlappingAssignments(
+                technician.getId(),
+                request.getScheduledStartTime(),
+                request.getScheduledEndTime()
+        );
+        if (!overlaps.isEmpty()) {
+            throw new TechnicianConflictException(technician.getId(), request.getScheduledStartTime(), request.getScheduledEndTime());
+        }
+
+        // 5. Capacity invariant: Daily job capacity limit
+        Instant startOfDay = LocalDate.now(ZoneOffset.UTC).atStartOfDay().toInstant(ZoneOffset.UTC);
+        long activeJobsToday = assignmentRepository.countTechnicianActiveJobsSince(technician.getId(), startOfDay);
+        if (activeJobsToday >= technician.getMaxDailyJobs()) {
+            throw new BusinessRuleException("Technician " + technician.getName() + " has reached the daily limit of " + technician.getMaxDailyJobs() + " jobs");
+        }
+
+        // 6. Multi-factor recommendation evaluation & manual override detection
+        DispatchRecommendationResponse recommendations = getRecommendationsForJob(job.getId());
+        TechnicianCandidateResponse topCandidate = recommendations.getRecommendedCandidate();
+
+        boolean isOverride = topCandidate != null && !topCandidate.getTechnicianId().equals(technician.getId());
+        String overrideReason = request.getOverrideReason();
+
+        if (isOverride) {
+            if (overrideReason == null || overrideReason.trim().isEmpty()) {
+                throw new BusinessRuleException(String.format(
+                        "Manual override detected: Selected technician '%s' is not the #1 recommendation ('%s'). An overrideReason is mandatory.",
+                        technician.getName(),
+                        topCandidate != null ? topCandidate.getTechnicianName() : "None"
+                ));
+            }
+
+            // Immutable Audit Log for Manual Override
+            String overridePayload = String.format(
+                    "{\"jobId\":%d,\"selectedTechnicianId\":%d,\"selectedTechnicianName\":\"%s\",\"recommendedTechnicianId\":%s,\"recommendedTechnicianName\":\"%s\",\"overrideReason\":\"%s\"}",
+                    job.getId(),
+                    technician.getId(),
+                    technician.getName(),
+                    topCandidate != null ? topCandidate.getTechnicianId().toString() : "null",
+                    topCandidate != null ? topCandidate.getTechnicianName() : "None",
+                    overrideReason.replace("\"", "\\\"")
+            );
+            AuditEvent overrideEvent = new AuditEvent(
+                    "JOB",
+                    job.getId(),
+                    AuditAction.MANUAL_OVERRIDE,
+                    actorUsername != null ? actorUsername : "dispatcher",
+                    overridePayload
+            );
+            auditEventRepository.save(overrideEvent);
+        }
+
+        // 7. Transition Job and ServiceRequest state
+        job.setStatus(JobStatus.ASSIGNED);
+        job.setScheduledStart(request.getScheduledStartTime());
+        job.setScheduledEnd(request.getScheduledEndTime());
+        Job savedJob = jobRepository.save(job);
+
+        if (savedJob.getServiceRequest() != null) {
+            savedJob.getServiceRequest().setStatus("ASSIGNED");
+            serviceRequestRepository.save(savedJob.getServiceRequest());
+        }
+
+        // 8. Create and persist Assignment
+        User actor = actorUsername != null ? userRepository.findByUsername(actorUsername).orElse(null) : null;
+        Assignment assignment = new Assignment(
+                savedJob,
+                technician,
+                actor,
+                AssignmentStatus.ACTIVE,
+                request.getScheduledStartTime(),
+                request.getScheduledEndTime(),
+                request.getNotes()
+        );
+        Assignment savedAssignment = assignmentRepository.save(assignment);
+
+        // 9. Immutable Audit Log for Dispatch
+        String dispatchPayload = String.format(
+                "{\"assignmentId\":%d,\"technicianId\":%d,\"technicianName\":\"%s\",\"scheduledStartTime\":\"%s\",\"scheduledEndTime\":\"%s\",\"manualOverride\":%b}",
+                savedAssignment.getId(),
+                technician.getId(),
+                technician.getName(),
+                request.getScheduledStartTime(),
+                request.getScheduledEndTime(),
+                isOverride
+        );
+        AuditEvent dispatchEvent = new AuditEvent(
+                "JOB",
+                savedJob.getId(),
+                AuditAction.DISPATCHED,
+                actorUsername != null ? actorUsername : "dispatcher",
+                dispatchPayload
+        );
+        auditEventRepository.save(dispatchEvent);
+
+        return new DispatchConfirmationResponse(
+                savedAssignment.getId(),
+                savedJob.getId(),
+                technician.getId(),
+                technician.getName(),
+                savedJob.getStatus(),
+                savedAssignment.getScheduledStartTime(),
+                savedAssignment.getScheduledEndTime(),
+                isOverride,
+                isOverride ? overrideReason : null,
+                actorUsername != null ? actorUsername : "dispatcher",
+                savedAssignment.getAssignedAt()
+        );
     }
 }

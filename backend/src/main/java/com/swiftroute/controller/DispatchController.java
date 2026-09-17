@@ -1,17 +1,19 @@
 package com.swiftroute.controller;
 
 import com.swiftroute.common.ApiResponse;
+import com.swiftroute.dto.request.DispatchConfirmationRequest;
+import com.swiftroute.dto.response.DispatchConfirmationResponse;
 import com.swiftroute.dto.response.DispatchRecommendationResponse;
 import com.swiftroute.service.DispatchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/dispatch")
@@ -33,4 +35,19 @@ public class DispatchController {
         DispatchRecommendationResponse response = dispatchService.getRecommendationsForJob(jobId);
         return ResponseEntity.ok(ApiResponse.ok("Candidate recommendations generated successfully", response));
     }
+
+    @PostMapping("/confirm")
+    @PreAuthorize("hasAnyRole('ADMIN', 'DISPATCHER')")
+    @Operation(summary = "Confirm Technician Dispatch Assignment",
+               description = "Assigns technician to job with schedule invariant checks and mandatory manual override auditing")
+    public ResponseEntity<ApiResponse<DispatchConfirmationResponse>> confirmDispatch(
+            @Valid @RequestBody DispatchConfirmationRequest request,
+            Authentication authentication
+    ) {
+        String actorUsername = authentication != null ? authentication.getName() : "dispatcher";
+        DispatchConfirmationResponse response = dispatchService.confirmDispatch(request, actorUsername);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.ok("Technician successfully assigned to job", response));
+    }
 }
+

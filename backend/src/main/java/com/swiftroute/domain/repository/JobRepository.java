@@ -3,8 +3,11 @@ package com.swiftroute.domain.repository;
 import com.swiftroute.domain.entity.Job;
 import com.swiftroute.domain.enums.JobStatus;
 import com.swiftroute.domain.enums.SlaStatus;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.Collection;
@@ -13,6 +16,10 @@ import java.util.Optional;
 
 @Repository
 public interface JobRepository extends JpaRepository<Job, Long> {
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT j FROM Job j WHERE j.id = :id")
+    Optional<Job> findByIdWithPessimisticLock(@Param("id") Long id);
+
     List<Job> findByStatus(JobStatus status);
     List<Job> findByStatusIn(Collection<JobStatus> statuses);
     Optional<Job> findByServiceRequestId(Long serviceRequestId);
