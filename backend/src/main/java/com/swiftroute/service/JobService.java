@@ -25,19 +25,22 @@ public class JobService {
     private final ServiceRequestRepository serviceRequestRepository;
     private final AuditEventRepository auditEventRepository;
     private final UserRepository userRepository;
+    private final InventoryService inventoryService;
 
     public JobService(JobRepository jobRepository,
                       AssignmentRepository assignmentRepository,
                       TechnicianRepository technicianRepository,
                       ServiceRequestRepository serviceRequestRepository,
                       AuditEventRepository auditEventRepository,
-                      UserRepository userRepository) {
+                      UserRepository userRepository,
+                      InventoryService inventoryService) {
         this.jobRepository = jobRepository;
         this.assignmentRepository = assignmentRepository;
         this.technicianRepository = technicianRepository;
         this.serviceRequestRepository = serviceRequestRepository;
         this.auditEventRepository = auditEventRepository;
         this.userRepository = userRepository;
+        this.inventoryService = inventoryService;
     }
 
     public boolean isValidTransition(JobStatus current, JobStatus target) {
@@ -107,6 +110,8 @@ public class JobService {
                     job.getServiceRequest().setStatus("COMPLETED");
                     serviceRequestRepository.save(job.getServiceRequest());
                 }
+                // Permanently consume reserved inventory upon completion
+                inventoryService.consumeReservationsForJob(job.getId(), actorUsername);
             }
             case CANCELLED -> {
                 // Job cancelled: free up technician if assigned
@@ -122,6 +127,8 @@ public class JobService {
                     job.getServiceRequest().setStatus("CANCELLED");
                     serviceRequestRepository.save(job.getServiceRequest());
                 }
+                // Automatic inventory rollback: release reserved stock
+                inventoryService.releaseReservationsForJob(job.getId(), "Job cancelled", actorUsername);
             }
             default -> {}
         }
