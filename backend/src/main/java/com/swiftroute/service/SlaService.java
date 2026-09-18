@@ -56,45 +56,51 @@ public class SlaService {
      */
     public SlaEvaluationResult evaluateJobSla(Job job, Instant now) {
         Instant createdAt = job.getCreatedAt() != null ? job.getCreatedAt() : now;
+        Instant responseDeadline = job.getSlaResponseDeadline() != null
+                ? job.getSlaResponseDeadline()
+                : createdAt.plus(Duration.ofHours(2));
+        Instant resolutionDeadline = job.getSlaResolutionDeadline() != null
+                ? job.getSlaResolutionDeadline()
+                : createdAt.plus(Duration.ofHours(8));
 
         // 1. Response SLA evaluation
-        long totalResponseMs = Math.max(1, Duration.between(createdAt, job.getSlaResponseDeadline()).toMillis());
+        long totalResponseMs = Math.max(1, Duration.between(createdAt, responseDeadline).toMillis());
         boolean responseBreached;
         double responseElapsedPercent;
         long responseRemainingSec;
 
         if (job.getActualResponseAt() != null) {
             // Already responded
-            responseBreached = job.getActualResponseAt().isAfter(job.getSlaResponseDeadline());
+            responseBreached = job.getActualResponseAt().isAfter(responseDeadline);
             long actualMs = Math.max(0, Duration.between(createdAt, job.getActualResponseAt()).toMillis());
             responseElapsedPercent = Math.min(100.0, (double) actualMs / totalResponseMs * 100.0);
             responseRemainingSec = 0;
         } else {
             // Awaiting response
-            responseBreached = now.isAfter(job.getSlaResponseDeadline());
+            responseBreached = now.isAfter(responseDeadline);
             long elapsedMs = Math.max(0, Duration.between(createdAt, now).toMillis());
             responseElapsedPercent = Math.min(200.0, (double) elapsedMs / totalResponseMs * 100.0);
-            responseRemainingSec = Math.max(0, Duration.between(now, job.getSlaResponseDeadline()).toSeconds());
+            responseRemainingSec = Math.max(0, Duration.between(now, responseDeadline).toSeconds());
         }
 
         // 2. Resolution SLA evaluation
-        long totalResolutionMs = Math.max(1, Duration.between(createdAt, job.getSlaResolutionDeadline()).toMillis());
+        long totalResolutionMs = Math.max(1, Duration.between(createdAt, resolutionDeadline).toMillis());
         boolean resolutionBreached;
         double resolutionElapsedPercent;
         long resolutionRemainingSec;
 
         if (job.getActualResolutionAt() != null) {
             // Already resolved
-            resolutionBreached = job.getActualResolutionAt().isAfter(job.getSlaResolutionDeadline());
+            resolutionBreached = job.getActualResolutionAt().isAfter(resolutionDeadline);
             long actualMs = Math.max(0, Duration.between(createdAt, job.getActualResolutionAt()).toMillis());
             resolutionElapsedPercent = Math.min(100.0, (double) actualMs / totalResolutionMs * 100.0);
             resolutionRemainingSec = 0;
         } else {
             // Awaiting resolution
-            resolutionBreached = now.isAfter(job.getSlaResolutionDeadline());
+            resolutionBreached = now.isAfter(resolutionDeadline);
             long elapsedMs = Math.max(0, Duration.between(createdAt, now).toMillis());
             resolutionElapsedPercent = Math.min(200.0, (double) elapsedMs / totalResolutionMs * 100.0);
-            resolutionRemainingSec = Math.max(0, Duration.between(now, job.getSlaResolutionDeadline()).toSeconds());
+            resolutionRemainingSec = Math.max(0, Duration.between(now, resolutionDeadline).toSeconds());
         }
 
         // 3. Determine composite status
