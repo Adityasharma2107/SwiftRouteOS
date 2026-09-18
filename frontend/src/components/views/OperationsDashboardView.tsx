@@ -8,18 +8,32 @@ import {
   Wrench,
   AlertCircle,
   ExternalLink,
+  ChevronRight,
 } from 'lucide-react';
 import { jobsApi } from '../../api/jobs';
 import { slaApi } from '../../api/sla';
 import { SlaStatusBadge } from '../common/SlaStatusBadge';
 import { PriorityBadge } from '../common/PriorityBadge';
 import { JobStatusBadge } from '../common/JobStatusBadge';
+import { DispatchRecommendationModal } from '../dispatch/DispatchRecommendationModal';
+import { DispatchConfirmationModal } from '../dispatch/DispatchConfirmationModal';
+import { JobDetailDrawer } from '../dispatch/JobDetailDrawer';
 import type { JobStatus, Priority, Job } from '../../types';
+import type { TechnicianCandidate } from '../../api/dispatch';
 
 export const OperationsDashboardView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<JobStatus | 'ALL'>('ALL');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Modal / Drawer state
+  const [selectedJobIdForDetail, setSelectedJobIdForDetail] = useState<number | null>(null);
+  const [dispatchJobTarget, setDispatchJobTarget] = useState<Job | null>(null);
+  const [confirmationTarget, setConfirmationTarget] = useState<{
+    jobId: number;
+    candidate: TechnicianCandidate;
+    isOverride: boolean;
+  } | null>(null);
 
   // Fetch jobs
   const {
@@ -53,6 +67,24 @@ export const OperationsDashboardView: React.FC = () => {
       job.serviceRequest.equipmentType.toLowerCase().includes(query)
     );
   });
+
+  const handleOpenDispatchForJob = (jobId: number) => {
+    const target = jobs.find((j: Job) => j.id === jobId);
+    if (target) {
+      setDispatchJobTarget(target);
+    }
+  };
+
+  const handleCandidateSelected = (candidate: TechnicianCandidate, isOverride: boolean) => {
+    if (!dispatchJobTarget) return;
+    const jobId = dispatchJobTarget.id;
+    setDispatchJobTarget(null);
+    setConfirmationTarget({
+      jobId,
+      candidate,
+      isOverride,
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -193,7 +225,11 @@ export const OperationsDashboardView: React.FC = () => {
               </thead>
               <tbody className="divide-y divide-slate-800/60">
                 {filteredJobs.map((job) => (
-                  <tr key={job.id} className="hover:bg-slate-800/40 transition-colors">
+                  <tr
+                    key={job.id}
+                    onClick={() => setSelectedJobIdForDetail(job.id)}
+                    className="hover:bg-slate-800/40 transition-colors cursor-pointer"
+                  >
                     <td className="px-4 py-3 font-mono font-bold text-cyan-400">
                       #{job.id}
                     </td>
@@ -229,10 +265,24 @@ export const OperationsDashboardView: React.FC = () => {
                         })}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <span className="inline-flex items-center gap-1 text-xs text-blue-400 font-semibold hover:text-blue-300 cursor-pointer">
-                        Details <ExternalLink className="w-3 h-3" />
-                      </span>
+                    <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-2">
+                        {job.status === 'PENDING' && (
+                          <button
+                            onClick={() => setDispatchJobTarget(job)}
+                            className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-[11px] flex items-center gap-1 shadow-sm cursor-pointer"
+                          >
+                            Dispatch <ChevronRight className="w-3 h-3" />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setSelectedJobIdForDetail(job.id)}
+                          className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800 cursor-pointer"
+                          title="View Job Details"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -241,6 +291,40 @@ export const OperationsDashboardView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* 1. Dispatch Recommendation Modal */}
+      {dispatchJobTarget && (
+        <DispatchRecommendationModal
+          jobId={dispatchJobTarget.id}
+          customerName={dispatchJobTarget.serviceRequest.customerName}
+          serviceAddress={dispatchJobTarget.serviceRequest.serviceAddress}
+          requiredSkillName={dispatchJobTarget.serviceRequest.requiredSkill?.name || 'General'}
+          priority={dispatchJobTarget.priority}
+          isOpen={!!dispatchJobTarget}
+          onClose={() => setDispatchJobTarget(null)}
+          onSelectCandidate={handleCandidateSelected}
+        />
+      )}
+
+      {/* 2. Dispatch Confirmation & Override Modal */}
+      {confirmationTarget && (
+        <DispatchConfirmationModal
+          jobId={confirmationTarget.jobId}
+          candidate={confirmationTarget.candidate}
+          isOverride={confirmationTarget.isOverride}
+          isOpen={!!confirmationTarget}
+          onClose={() => setConfirmationTarget(null)}
+          onSuccess={() => refetchJobs()}
+        />
+      )}
+
+      {/* 3. Job Detail & Audit Drawer */}
+      <JobDetailDrawer
+        jobId={selectedJobIdForDetail}
+        isOpen={selectedJobIdForDetail !== null}
+        onClose={() => setSelectedJobIdForDetail(null)}
+        onOpenDispatchModal={handleOpenDispatchForJob}
+      />
     </div>
   );
 };
