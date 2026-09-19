@@ -40,12 +40,12 @@ spring:
 # swiftroute Custom Security & SLA Properties
 swiftroute:
   jwt:
-    secret: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
-    access-token-expiration-ms: 86400000 # 24 hours
-    refresh-token-expiration-ms: 604800000 # 7 days
+    secret: ${JWT_SECRET:404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+    access-token-expiration-ms: ${JWT_ACCESS_TOKEN_EXPIRATION_MS:86400000} # 24 hours
+    refresh-token-expiration-ms: ${JWT_REFRESH_TOKEN_EXPIRATION_MS:604800000} # 7 days
   sla:
-    scheduler-rate-ms: 30000 # Run check every 30 seconds
-    warning-threshold-percent: 0.70 # 70% elapsed triggers warning
+    scheduler-rate-ms: ${SLA_SCHEDULER_RATE_MS:30000} # Run check every 30 seconds
+    warning-threshold-percent: ${SLA_WARNING_THRESHOLD:0.70} # 70% elapsed triggers warning
 
 # OpenAPI Configuration
 springdoc:
