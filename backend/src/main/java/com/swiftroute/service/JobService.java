@@ -26,6 +26,7 @@ public class JobService {
     private final AuditEventRepository auditEventRepository;
     private final UserRepository userRepository;
     private final InventoryService inventoryService;
+    private com.swiftroute.websocket.WebSocketEventPublisher webSocketEventPublisher;
 
     public JobService(JobRepository jobRepository,
                       AssignmentRepository assignmentRepository,
@@ -41,6 +42,11 @@ public class JobService {
         this.auditEventRepository = auditEventRepository;
         this.userRepository = userRepository;
         this.inventoryService = inventoryService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWebSocketEventPublisher(com.swiftroute.websocket.WebSocketEventPublisher webSocketEventPublisher) {
+        this.webSocketEventPublisher = webSocketEventPublisher;
     }
 
     public boolean isValidTransition(JobStatus current, JobStatus target) {
@@ -149,6 +155,16 @@ public class JobService {
                 payloadJson
         );
         auditEventRepository.save(auditEvent);
+
+        if (webSocketEventPublisher != null) {
+            webSocketEventPublisher.publishJobEvent("JOB_STATUS_CHANGED", java.util.Map.of(
+                    "jobId", savedJob.getId(),
+                    "previousStatus", currentStatus.name(),
+                    "newStatus", targetStatus.name(),
+                    "actor", actorUsername != null ? actorUsername : "system",
+                    "timestamp", java.time.Instant.now().toString()
+            ));
+        }
 
         return mapToJobResponse(savedJob, activeAssignment);
     }

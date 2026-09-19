@@ -19,13 +19,16 @@ import com.swiftroute.dto.response.SlaPolicyResponse;
 import com.swiftroute.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.swiftroute.websocket.WebSocketEventPublisher;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class SlaService {
@@ -36,6 +39,7 @@ public class SlaService {
     private final SlaPolicyRepository slaPolicyRepository;
     private final SlaEscalationEventRepository slaEscalationEventRepository;
     private final AuditEventRepository auditEventRepository;
+    private WebSocketEventPublisher webSocketEventPublisher;
 
     @Value("${swiftroute.sla.warning-threshold-percent:0.70}")
     private double warningThresholdPercent;
@@ -48,6 +52,11 @@ public class SlaService {
         this.slaPolicyRepository = slaPolicyRepository;
         this.slaEscalationEventRepository = slaEscalationEventRepository;
         this.auditEventRepository = auditEventRepository;
+    }
+
+    @Autowired(required = false)
+    public void setWebSocketEventPublisher(WebSocketEventPublisher webSocketEventPublisher) {
+        this.webSocketEventPublisher = webSocketEventPublisher;
     }
 
     /**
@@ -176,6 +185,15 @@ public class SlaService {
                 );
                 auditEventRepository.save(auditEvent);
                 log.warn("SLA BREACHED for Job #{} (Priority: {})", job.getId(), job.getPriority());
+
+                if (webSocketEventPublisher != null) {
+                    webSocketEventPublisher.publishSlaAlert("SLA_BREACHED", Map.of(
+                            "jobId", job.getId(),
+                            "priority", job.getPriority().name(),
+                            "stage", "BREACHED",
+                            "timestamp", now.toString()
+                    ));
+                }
             }
         } else if (computed == SlaStatus.NEARING_BREACH) {
             // Check idempotency guard
@@ -199,6 +217,17 @@ public class SlaService {
                 );
                 auditEventRepository.save(auditEvent);
                 log.info("SLA NEARING_BREACH warning triggered for Job #{}", job.getId());
+
+                if (webSocketEventPublisher != null) {
+                    webSocketEventPublisher.publishSlaAlert("SLA_WARNING", Map.of(
+                            "jobId", job.getId(),
+                            "priority", job.getPriority().name(),
+                            "stage", "NEARING_BREACH",
+                            "responseElapsedPercent", eval.getResponseElapsedPercent(),
+                            "resolutionElapsedPercent", eval.getResolutionElapsedPercent(),
+                            "timestamp", now.toString()
+                    ));
+                }
             }
         }
 

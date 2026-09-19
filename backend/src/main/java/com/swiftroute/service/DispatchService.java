@@ -40,6 +40,7 @@ public class DispatchService {
     private final AuditEventRepository auditEventRepository;
     private final UserRepository userRepository;
     private final ServiceRequestRepository serviceRequestRepository;
+    private com.swiftroute.websocket.WebSocketEventPublisher webSocketEventPublisher;
 
     public DispatchService(JobRepository jobRepository,
                            TechnicianRepository technicianRepository,
@@ -53,6 +54,11 @@ public class DispatchService {
         this.auditEventRepository = auditEventRepository;
         this.userRepository = userRepository;
         this.serviceRequestRepository = serviceRequestRepository;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setWebSocketEventPublisher(com.swiftroute.websocket.WebSocketEventPublisher webSocketEventPublisher) {
+        this.webSocketEventPublisher = webSocketEventPublisher;
     }
 
     @Transactional(readOnly = true)
@@ -325,6 +331,18 @@ public class DispatchService {
                 dispatchPayload
         );
         auditEventRepository.save(dispatchEvent);
+
+        if (webSocketEventPublisher != null) {
+            webSocketEventPublisher.publishJobEvent("JOB_ASSIGNED", java.util.Map.of(
+                    "jobId", savedJob.getId(),
+                    "technicianId", technician.getId(),
+                    "technicianName", technician.getName(),
+                    "scheduledStartTime", request.getScheduledStartTime().toString(),
+                    "scheduledEndTime", request.getScheduledEndTime().toString(),
+                    "isOverride", isOverride,
+                    "timestamp", java.time.Instant.now().toString()
+            ));
+        }
 
         return new DispatchConfirmationResponse(
                 savedAssignment.getId(),
