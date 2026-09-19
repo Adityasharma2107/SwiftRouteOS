@@ -58,12 +58,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     ? DEMO_PERSONAS.find((p) => p.username === user.username) || null
     : null;
 
-  const handleAuthSuccess = (accessToken: string, refreshToken: string, userData: User) => {
+  const handleAuthSuccess = useCallback((accessToken: string, refreshToken: string, userData: User) => {
     localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
     localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
     localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(userData));
     setUser(userData);
-  };
+  }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
@@ -72,7 +72,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     setUser(null);
   }, []);
 
-  const login = async (username: string, password = DEFAULT_DEMO_PASSWORD) => {
+  const login = useCallback(async (username: string, password = DEFAULT_DEMO_PASSWORD) => {
     setIsLoading(true);
     try {
       const authResponse = await authApi.login(username, password);
@@ -84,7 +84,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [handleAuthSuccess]);
 
   const switchPersona = async (personaKey: string) => {
     const persona = DEMO_PERSONAS.find((p) => p.key === personaKey);
@@ -125,7 +125,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     initAuth();
-  }, []);
+  }, [login, logout]);
 
   return (
     <AuthContext.Provider

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   X,
@@ -29,25 +29,19 @@ export const DispatchConfirmationModal: React.FC<DispatchConfirmationModalProps>
 }) => {
   const queryClient = useQueryClient();
 
-  // Schedule start/end defaults
-  const [startTime, setStartTime] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
+  const getDefaultTimes = () => {
+    const now = new Date();
+    return {
+      start: new Date(now.getTime() + 15 * 60000).toISOString().slice(0, 16),
+      end: new Date(now.getTime() + 135 * 60000).toISOString().slice(0, 16),
+    };
+  };
+
+  const [startTime, setStartTime] = useState<string>(() => getDefaultTimes().start);
+  const [endTime, setEndTime] = useState<string>(() => getDefaultTimes().end);
   const [overrideReason, setOverrideReason] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (isOpen) {
-      const now = new Date();
-      const startIso = new Date(now.getTime() + 15 * 60000).toISOString().slice(0, 16);
-      const endIso = new Date(now.getTime() + 135 * 60000).toISOString().slice(0, 16);
-      setStartTime(startIso);
-      setEndTime(endIso);
-      setOverrideReason('');
-      setNotes('');
-      setErrorMessage(null);
-    }
-  }, [isOpen]);
 
   const confirmMutation = useMutation({
     mutationFn: async () => {
