@@ -201,3 +201,33 @@ export interface DemoPersona {
   role: UserRole;
   avatarColor: string;
 }
+
+export type WebSocketEventType =
+  | 'JOB_STATUS_CHANGED'
+  | 'JOB_ASSIGNED'
+  | 'SLA_WARNING'
+  | 'SLA_BREACHED'
+  | 'INVENTORY_RESERVED'
+  | 'INVENTORY_RELEASED'
+  | 'INVENTORY_CONSUMED'
+  | 'INVENTORY_UPDATED'
+  | 'CHAOS_EVENT';
+
+export interface WebSocketMessage<T = unknown> {
+  eventType: WebSocketEventType | string;
+  destination: string;
+  timestamp: string;
+  payload: T;
+  message?: string;
+}
+
+export interface LiveNotification {
+  id: string;
+  type: 'info' | 'warning' | 'error' | 'success';
+  title: string;
+  message: string;
+  timestamp: string;
+  eventType: string;
+  payload?: unknown;
+}
+

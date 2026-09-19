@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
+import { WebSocketProvider } from './context/WebSocketContext';
+import { NotificationToast } from './components/common/NotificationToast';
 import { AppLayout } from './components/layout/AppLayout';
 import type { NavTab } from './components/layout/Sidebar';
 import { OperationsDashboardView } from './components/views/OperationsDashboardView';
@@ -28,6 +30,7 @@ const MainContent: React.FC = () => {
       {activeTab === 'inventory' && <InventoryView />}
       {activeTab === 'chaos' && <ChaosLabView />}
       {activeTab === 'policies' && <SlaPoliciesView />}
+      <NotificationToast />
     </AppLayout>
   );
 };
@@ -36,7 +39,9 @@ export function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <MainContent />
+        <WebSocketProvider>
+          <MainContent />
+        </WebSocketProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

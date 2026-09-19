@@ -10,12 +10,16 @@ import {
   UserCheck,
   LogOut,
   Sparkles,
+  Radio,
+  Bell,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useWebSocket } from '../../context/WebSocketContext';
 import { slaApi } from '../../api/sla';
 
 export const Header: React.FC = () => {
   const { user, activePersona, demoPersonas, switchPersona, logout } = useAuth();
+  const { isConnected, notifications } = useWebSocket();
   const [isPersonaMenuOpen, setIsPersonaMenuOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
@@ -126,8 +130,33 @@ export const Header: React.FC = () => {
         )}
       </div>
 
-      {/* Role Switcher & Persona Menu */}
-      <div className="relative" ref={dropdownRef}>
+      {/* Right Controls: Realtime WebSocket Status, Notifications & Persona Menu */}
+      <div className="flex items-center gap-3">
+        <div
+          title={isConnected ? 'Connected to Spring STOMP broker' : 'Connecting to WebSocket broker...'}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${
+            isConnected
+              ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400'
+              : 'bg-amber-950/40 border-amber-500/30 text-amber-400'
+          }`}
+        >
+          <Radio className={`w-3.5 h-3.5 ${isConnected ? 'text-emerald-400 animate-pulse' : 'text-amber-400'}`} />
+          <span className="hidden xl:inline text-[11px]">
+            {isConnected ? 'Live STOMP' : 'Connecting...'}
+          </span>
+        </div>
+
+        {notifications.length > 0 && (
+          <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-slate-200">
+            <Bell className="w-4 h-4 text-cyan-400" />
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[9px] font-black flex items-center justify-center animate-bounce">
+              {notifications.length}
+            </span>
+          </div>
+        )}
+
+        {/* Role Switcher & Persona Menu */}
+        <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setIsPersonaMenuOpen(!isPersonaMenuOpen)}
           className="flex items-center gap-2.5 bg-slate-800/80 hover:bg-slate-800 border border-slate-700/60 rounded-xl px-3 py-1.5 transition-all text-left cursor-pointer"
@@ -222,6 +251,7 @@ export const Header: React.FC = () => {
           </div>
         )}
       </div>
-    </header>
-  );
+    </div>
+  </header>
+);
 };
