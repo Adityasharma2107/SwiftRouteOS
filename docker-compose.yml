@@ -1,28 +1,36 @@
 services:
+  # ============================================================================
+  # Relational Database: PostgreSQL 16
+  # ============================================================================
   postgres:
     image: postgres:16-alpine
     container_name: swiftroute-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: swiftroute_db
-      POSTGRES_USER: swiftroute
-      POSTGRES_PASSWORD: swiftroute_secret
+      POSTGRES_DB: ${POSTGRES_DB:-swiftroute_db}
+      POSTGRES_USER: ${POSTGRES_USER:-swiftroute}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-swiftroute_secret}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - swiftroute_pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U swiftroute -d swiftroute_db"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-swiftroute} -d ${POSTGRES_DB:-swiftroute_db}"]
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - swiftroute-network
 
+  # ============================================================================
+  # In-Memory Cache: Redis 7
+  # ============================================================================
   redis:
     image: redis:7-alpine
     container_name: swiftroute-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - swiftroute_redisdata:/data
     healthcheck:
@@ -30,7 +38,79 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - swiftroute-network
+
+  # ============================================================================
+  # Application Core: Spring Boot 3.4 (JDK 21)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: swiftroute-backend:latest
+    container_name: swiftroute-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-swiftroute_db}
+      DB_USER: ${POSTGRES_USER:-swiftroute}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-swiftroute_secret}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970}
+      SPRING_PROFILES_ACTIVE: prod
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    networks:
+      - swiftroute-network
+
+  # ============================================================================
+  # Web Client & API Gateway: React 19 + Nginx Reverse Proxy
+  # ============================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: swiftroute-frontend:latest
+    container_name: swiftroute-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+      - "${FRONTEND_ALT_PORT:-3000}:80"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:80/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    networks:
+      - swiftroute-network
 
 volumes:
   swiftroute_pgdata:
+    name: swiftroute_pgdata
+    driver: local
   swiftroute_redisdata:
+    name: swiftroute_redisdata
+    driver: local
+
+networks:
+  swiftroute-network:
+    name: swiftroute-network
+    driver: bridge
