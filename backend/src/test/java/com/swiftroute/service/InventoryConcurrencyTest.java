@@ -66,6 +66,7 @@ class InventoryConcurrencyTest {
 
         // Ensure clean, deterministic state for scarce test item
         InventoryItem item = inventoryItemRepository.findByPartNumber("SCARCE-SENSOR-CHILLER").orElseThrow();
+        item.setQuantityOnHand(1);
         item.setQuantityReserved(0);
         inventoryItemRepository.saveAndFlush(item);
     }
