@@ -31,8 +31,12 @@ LABEL maintainer="SwiftRouteOS Engineering <team@swiftroute.io>" \
 # Remove default nginx website configuration
 RUN rm -rf /etc/nginx/conf.d/default.conf
 
-# Copy custom Nginx configuration
+# Copy custom Nginx configuration and template for dynamic cloud environments
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+
+ENV BACKEND_HOST=backend:8080
+ENV PORT=80
 
 # Copy built production assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html

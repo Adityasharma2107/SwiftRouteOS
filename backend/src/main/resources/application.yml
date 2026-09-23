@@ -64,3 +64,6 @@ management:
   endpoint:
     health:
       show-details: always
+  health:
+    redis:
+      enabled: ${REDIS_HEALTH_CHECK_ENABLED:false}

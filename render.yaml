@@ -1,0 +1,81 @@
+# ==============================================================================
+# SwiftRouteOS - Render Infrastructure-as-Code Blueprint
+# Deploy instantly by linking this repository at https://dashboard.render.com/blueprints
+# ==============================================================================
+
+databases:
+  # ----------------------------------------------------------------------------
+  # 1. Managed PostgreSQL 16 Database
+  # ----------------------------------------------------------------------------
+  - name: swiftroute-postgres
+    databaseName: swiftroute_db
+    user: swiftroute
+    plan: starter
+    region: oregon
+    postgresMajorVersion: "16"
+
+services:
+  # ----------------------------------------------------------------------------
+  # 2. Application Core (Spring Boot 3.4 / JDK 21)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: swiftroute-backend
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: starter
+    region: oregon
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_HOST
+        fromDatabase:
+          name: swiftroute-postgres
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: swiftroute-postgres
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: swiftroute-postgres
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: swiftroute-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: swiftroute-postgres
+          property: password
+      - key: REDIS_HOST
+        value: localhost
+      - key: REDIS_PORT
+        value: "6379"
+      - key: REDIS_HEALTH_CHECK_ENABLED
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: SLA_SCHEDULER_RATE_MS
+        value: "30000"
+      - key: SLA_WARNING_THRESHOLD
+        value: "0.70"
+
+  # ----------------------------------------------------------------------------
+  # 3. Web Client & API Gateway (React 19 + Nginx Reverse Proxy)
+  # ----------------------------------------------------------------------------
+  - type: web
+    name: swiftroute-frontend
+    runtime: docker
+    dockerfilePath: frontend/Dockerfile
+    dockerContext: frontend
+    plan: starter
+    region: oregon
+    healthCheckPath: /
+    envVars:
+      - key: BACKEND_HOST
+        fromService:
+          type: web
+          name: swiftroute-backend
+          property: host
