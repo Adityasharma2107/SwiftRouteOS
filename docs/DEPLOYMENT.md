@@ -40,7 +40,53 @@ SwiftRouteOS includes a native Infrastructure-as-Code blueprint file ([`render.y
 
 ---
 
-## 🚆 Option 2: Deploy on Railway
+## ⚡ Option 2: Render (Backend + PostgreSQL) + Vercel (Frontend Edge CDN) [Hybrid Recommended]
+
+This hybrid pattern gives you the best of both worlds:
+* **Render**: Runs the persistent PostgreSQL 16 database and Spring Boot 3.4 API service with zero container sleep on active plans.
+* **Vercel**: Delivers ultra-low latency worldwide edge caching, automatic branch previews, and instant deployments for the React 19 SPA.
+
+### Part A: Deploy Database & Backend on Render
+1. In Render Dashboard, click **"New +"** $\rightarrow$ **"PostgreSQL"**:
+   - Name: `swiftroute-postgres`
+   - Database: `swiftroute_db`
+   - User: `swiftroute`
+   - Region: Choose closest (e.g. `Oregon` or `Frankfurt`)
+   - Click **"Create Database"**.
+2. Click **"New +"** $\rightarrow$ **"Web Service"**:
+   - Connect repository: `https://github.com/Adityasharma2107/SwiftRouteOS.git`
+   - Name: `swiftroute-backend`
+   - Root Directory: `backend`
+   - Runtime: `Docker` (Render will automatically detect `backend/Dockerfile`)
+   - Health Check Path: `/actuator/health`
+3. Add Environment Variables in Render:
+   - `SPRING_PROFILES_ACTIVE`: `prod`
+   - `DB_HOST`: In Render, select **"Add from Database"** $\rightarrow$ select `swiftroute-postgres` $\rightarrow$ choose `Host`
+   - `DB_PORT`: `5432`
+   - `DB_NAME`: `swiftroute_db`
+   - `DB_USER`: Select from `swiftroute-postgres` $\rightarrow$ `User`
+   - `DB_PASSWORD`: Select from `swiftroute-postgres` $\rightarrow$ `Password`
+   - `JWT_SECRET`: Generate a 256-bit secret string
+   - `REDIS_HEALTH_CHECK_ENABLED`: `false`
+4. Click **"Create Web Service"**.
+5. Copy your Render backend URL once deployed (e.g., `https://swiftroute-backend.onrender.com`).
+
+### Part B: Deploy Frontend on Vercel
+1. Log in to [https://vercel.com](https://vercel.com) and click **"Add New..."** $\rightarrow$ **"Project"**.
+2. Import `Adityasharma2107/SwiftRouteOS`.
+3. In Project Settings:
+   - **Framework Preset**: `Vite`
+   - **Root Directory**: Click "Edit" and select `frontend`
+4. Expand **Environment Variables** and add:
+   - `VITE_API_URL`: `https://your-backend.onrender.com/api`
+   - `VITE_WS_URL`: `https://your-backend.onrender.com/ws`
+5. Click **"Deploy"**.
+6. Vercel automatically compiles the production assets via `npm run build` and deploys to `https://swiftroute.vercel.app`!
+7. Client-side routing is handled seamlessly by [`frontend/vercel.json`](../frontend/vercel.json), and CORS/WebSockets are pre-configured to accept requests from your Vercel domain.
+
+---
+
+## 🚆 Option 3: Deploy on Railway
 
 Railway offers native Dockerfile support and 1-click database provisioning.
 

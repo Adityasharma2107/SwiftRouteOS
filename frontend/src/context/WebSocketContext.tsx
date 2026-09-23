@@ -160,7 +160,8 @@ export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     // Factory function for SockJS connection
     const createSockJSInstance = () => {
       const SockJSConstructor = (SockJS as unknown as { default?: typeof SockJS }).default ?? SockJS;
-      return new SockJSConstructor('/ws');
+      const wsUrl = import.meta.env.VITE_WS_URL || '/ws';
+      return new SockJSConstructor(wsUrl);
     };
 
     const client = new Client({
